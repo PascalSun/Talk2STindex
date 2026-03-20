@@ -1,0 +1,113 @@
+name: Deploy MCP (Bastion)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  home_prod:
+    name: Deploy via Bastion
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout the codebase
+        uses: actions/checkout@v4
+
+      - name: Create code archive
+        run: |
+          tar -czf ../talk2stindex-code.tar.gz \
+            --exclude=.git \
+            --exclude=.venv \
+            --exclude=__pycache__ \
+            --exclude=.pytest_cache \
+            --exclude=.mypy_cache \
+            --exclude=.ruff_cache \
+            --exclude=dist \
+            --exclude=build \
+            --exclude=.tox \
+            --exclude=logs \
+            --exclude=data \
+            --exclude=*.tar.gz \
+            --exclude=*.tar \
+            .
+          mv ../talk2stindex-code.tar.gz .
+
+      - name: Install rsync and sshpass
+        run: sudo apt-get update && sudo apt-get install -y rsync sshpass
+
+      - name: Upload archive to bastion
+        run: |
+          echo "${{ secrets.HOME_SERVER_PASSWORD }}" > /tmp/sshpass
+          chmod 600 /tmp/sshpass
+          export SSHPASS=$(cat /tmp/sshpass)
+          sshpass -e rsync -avz -e "ssh -o StrictHostKeyChecking=no -p 24542" talk2stindex-code.tar.gz pascal@1.tcp.au.ngrok.io:/home/pascal/
+          rm /tmp/sshpass
+
+      - name: Deploy from bastion to internal server
+        uses: appleboy/ssh-action@v1.2.4
+        with:
+          host: 1.tcp.au.ngrok.io
+          username: pascal
+          password: ${{ secrets.HOME_SERVER_PASSWORD }}
+          port: 24542
+          timeout: 60s
+          command_timeout: 15m
+          script: |
+            scp /home/pascal/talk2stindex-code.tar.gz kaia@192.168.50.243:/home/kaia/talk2stindex-code.tar.gz
+            rm -f /home/pascal/talk2stindex-code.tar.gz
+            ssh kaia@192.168.50.243 '
+              set -e
+
+              APP_ROOT="/home/kaia/Services/Talk2STIndex"
+              CODE_DIR="$APP_ROOT/code"
+              ARTIFACTS_DIR="$APP_ROOT/artifacts"
+
+              mkdir -p "$CODE_DIR"
+
+              if [ ! -f "$ARTIFACTS_DIR/config.mcp.prod.yml" ]; then
+                echo "Missing required file: $ARTIFACTS_DIR/config.mcp.prod.yml"
+                exit 1
+              fi
+
+              mkdir -p "$ARTIFACTS_DIR/data" "$ARTIFACTS_DIR/logs"
+
+              docker run --rm \
+                -v "$CODE_DIR:/code" \
+                -v "$ARTIFACTS_DIR:/artifacts" \
+                alpine sh -c "
+                  if [ -d /code/data ] && [ ! -L /code/data ]; then
+                    cp -a /code/data/. /artifacts/data/ 2>/dev/null || true
+                    rm -rf /code/data
+                  fi
+                  if [ -d /code/logs ] && [ ! -L /code/logs ]; then
+                    cp -a /code/logs/. /artifacts/logs/ 2>/dev/null || true
+                    rm -rf /code/logs
+                  fi
+                " 2>/dev/null || true
+
+              cd "$CODE_DIR"
+              find . -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+              mv /home/kaia/talk2stindex-code.tar.gz "$CODE_DIR/talk2stindex-code.tar.gz"
+              tar -xzf talk2stindex-code.tar.gz
+              rm -f talk2stindex-code.tar.gz
+
+              ln -sfn "$ARTIFACTS_DIR/data" "$CODE_DIR/data"
+              ln -sfn "$ARTIFACTS_DIR/logs" "$CODE_DIR/logs"
+
+              cp "$ARTIFACTS_DIR/config.mcp.prod.yml" "$CODE_DIR/config.mcp.yml"
+              if [ -f "$ARTIFACTS_DIR/config.yml" ]; then
+                cp "$ARTIFACTS_DIR/config.yml" "$CODE_DIR/config.yml"
+              fi
+
+              docker --version
+              docker compose version
+
+              docker compose -f docker-compose.mcp.yml down || true
+              docker compose -f docker-compose.mcp.yml up -d --build
+
+              sleep 5
+              docker compose -f docker-compose.mcp.yml ps
+              curl -fsS http://127.0.0.1:8014/health | cat
+            '

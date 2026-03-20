@@ -1,0 +1,131 @@
+[project]
+name = "talk2stindex"
+version = "0.1.0"
+description = "STIndex spatiotemporal extraction MCP server"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "PascalSun", email = "pascalsun23@gmail.com" }]
+requires-python = ">=3.11"
+dependencies = [
+    "click>=8.0",
+    "pyyaml>=6.0",
+    "pydantic>=2.0",
+    "loguru>=0.7.0",
+    "httpx>=0.27.0",
+    "anthropic>=0.18.0",
+    "openai>=1.0.0",
+    "geopy>=2.4.0",
+]
+
+[project.optional-dependencies]
+mcp = [
+    "mcp>=1.20.0",
+    "starlette>=0.27.0",
+    "httpx>=0.27.0",
+    "pyjwt>=2.8.0",
+    "uvicorn>=0.23.0",
+]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "pytest-asyncio>=0.21.0",
+    "black==24.8.0",
+    "isort>=5.12",
+    "flake8>=6.0",
+    "tox>=4.0",
+]
+
+[project.scripts]
+talk2stindex-mcp = "talk2stindex.mcp.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/talk2stindex"]
+
+[tool.black]
+line-length = 88
+target-version = ['py311', 'py312']
+
+[tool.isort]
+profile = "black"
+line_length = 88
+src_paths = ["src", "tests"]
+known_first_party = ["talk2stindex"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = [
+    "-v",
+    "--tb=short",
+    "--strict-markers",
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+]
+
+[tool.tox]
+requires = ["tox>=4"]
+env_list = ["lint", "test"]
+
+[tool.tox.env_run_base]
+package = "editable"
+
+[tool.tox.env.lint]
+description = "Check formatting (black, isort) and lint (flake8)"
+extras = ["dev"]
+commands = [
+    ["black", "--check", "--diff", "src", "tests"],
+    ["isort", "--check-only", "--diff", "src", "tests"],
+    ["flake8", "src", "tests"],
+]
+
+[tool.tox.env.format]
+description = "Auto-format code with black and isort"
+extras = ["dev"]
+commands = [
+    ["black", "src", "tests"],
+    ["isort", "src", "tests"],
+]
+
+[tool.tox.env.test]
+description = "Run the test suite"
+extras = ["dev", "mcp"]
+commands = [["pytest"]]
+
+[tool.tox.env.test-cov]
+description = "Run tests with coverage report"
+extras = ["dev", "mcp"]
+commands = [
+    [
+        "pytest",
+        "--cov=talk2stindex",
+        "--cov-report=term-missing",
+        "--cov-report=html",
+    ],
+]
+
+[tool.coverage.run]
+source = ["src/talk2stindex"]
+omit = [
+    "*/tests/*",
+    "*/test_*.py",
+    "*/__pycache__/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "@abstractmethod",
+]
+precision = 2
+show_missing = true

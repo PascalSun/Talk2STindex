@@ -1,0 +1,10 @@
+FROM vllm/vllm-openai:v0.11.2
+WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+COPY pyproject.toml /app/pyproject.toml
+COPY src /app/src
+COPY README.md /app/README.md
+RUN python -m pip install --no-cache-dir --upgrade pip && \
+    python -m pip install --no-cache-dir ".[mcp]"
+EXPOSE 8014
+CMD ["talk2stindex-mcp", "sse", "--host", "0.0.0.0", "--port", "8014"]
