@@ -19,7 +19,7 @@ Spatiotemporal extraction MCP server powered by [STIndex](https://github.com/Moe
 
 # Run
 source .venv/bin/activate
-talk2stindex-mcp sse --port 8014
+talk2stindex-mcp sse --port 8016
 ```
 
 ## Docker

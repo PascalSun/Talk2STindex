@@ -34,8 +34,8 @@ class ServerConfig:
     """MCP server configuration."""
 
     host: str = "0.0.0.0"
-    port: int = 8014
-    base_url: str = "http://localhost:8014"
+    port: int = 8016
+    base_url: str = "http://localhost:8016"
 
 
 @dataclass
@@ -110,8 +110,8 @@ class MCPConfig:
             server_data = data.get("server", {})
             server = ServerConfig(
                 host=server_data.get("host", "0.0.0.0"),
-                port=server_data.get("port", 8014),
-                base_url=server_data.get("base_url", "http://localhost:8014"),
+                port=server_data.get("port", 8016),
+                base_url=server_data.get("base_url", "http://localhost:8016"),
             )
 
             oauth_data = data.get("oauth", {})
@@ -184,8 +184,8 @@ class MCPConfig:
         """Load configuration from environment variables."""
         server = ServerConfig(
             host=os.getenv("MCP_HOST", "0.0.0.0"),
-            port=int(os.getenv("MCP_PORT", "8014")),
-            base_url=os.getenv("MCP_BASE_URL", "http://localhost:8014"),
+            port=int(os.getenv("MCP_PORT", "8016")),
+            base_url=os.getenv("MCP_BASE_URL", "http://localhost:8016"),
         )
 
         oauth = OAuthConfig(

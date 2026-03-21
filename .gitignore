@@ -17,3 +17,4 @@ logs/
 data/
 .DS_Store
 *.so
+.tox

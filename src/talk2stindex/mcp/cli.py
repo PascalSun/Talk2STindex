@@ -40,7 +40,7 @@ def main() -> None:
     "--host", default=None, help="Bind address (default: from config or 0.0.0.0)"
 )
 @click.option(
-    "--port", default=None, type=int, help="Port to bind (default: from config or 8014)"
+    "--port", default=None, type=int, help="Port to bind (default: from config or 8016)"
 )
 @click.option("--log-level", default="info", help="Uvicorn log level")
 @click.option(

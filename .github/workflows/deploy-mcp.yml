@@ -109,5 +109,5 @@ jobs:
 
               sleep 5
               docker compose -f docker-compose.mcp.yml ps
-              curl -fsS http://127.0.0.1:8014/health | cat
+              curl -fsS http://127.0.0.1:8016/health | cat
             '

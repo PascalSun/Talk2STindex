@@ -4,8 +4,8 @@
 
 server:
   host: 0.0.0.0
-  port: 8014
-  base_url: http://localhost:8014
+  port: 8016
+  base_url: http://localhost:8016
 
 oauth:
   discovery_url: https://admin.kaiaperth.com/o/.well-known/openid-configuration

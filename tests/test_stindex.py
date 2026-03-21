@@ -176,7 +176,7 @@ def test_config_load_defaults():
     from talk2stindex.mcp.config import MCPConfig
 
     config = MCPConfig()
-    assert config.server.port == 8014
+    assert config.server.port == 8016
     assert config.server.host == "0.0.0.0"
     assert config.oauth.protect_mcp is True
     assert config.llm.anthropic_api_key is None
