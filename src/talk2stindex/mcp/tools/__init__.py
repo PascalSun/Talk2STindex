@@ -19,6 +19,7 @@ TOOL_SPECS = stindex.TOOL_SPECS
 TOOL_HANDLERS = {
     "extract_text": stindex.handle_extract_text,
     "extract_pdf": stindex.handle_extract_pdf,
+    "analyze_errors": stindex.handle_analyze_errors,
 }
 
 

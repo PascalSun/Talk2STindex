@@ -211,6 +211,20 @@ async def _handle_health(_request: Request) -> JSONResponse:
     )
 
 
+async def _handle_api_analyze_errors(request: Request) -> JSONResponse:
+    """REST endpoint to analyze dismissed entities and suggest improvements."""
+    from .tools.stindex import handle_analyze_errors
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
+
+    results = await handle_analyze_errors(body)
+    import json as _json
+    return JSONResponse(_json.loads(results[0].text))
+
+
 async def _handle_api_extract_pdf(request: Request) -> JSONResponse:
     """REST endpoint to trigger extract_pdf (fire-and-forget friendly)."""
     import asyncio
@@ -368,6 +382,16 @@ def create_asgi_app(
         Route(
             "/api/extract_pdf/",
             endpoint=_handle_api_extract_pdf,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/analyze_errors",
+            endpoint=_handle_api_analyze_errors,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/analyze_errors/",
+            endpoint=_handle_api_analyze_errors,
             methods=["POST"],
         ),
         Route(

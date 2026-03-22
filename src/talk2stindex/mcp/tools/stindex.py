@@ -95,7 +95,53 @@ EXTRACT_PDF_SPEC = {
     },
 }
 
-TOOL_SPECS = [EXTRACT_TEXT_SPEC, EXTRACT_PDF_SPEC]
+ANALYZE_ERRORS_SPEC = {
+    "name": "analyze_errors",
+    "description": (
+        "Analyze dismissed (incorrect) spatiotemporal entities and generate "
+        "improved spatial/temporal context suggestions. Takes a list of "
+        "incorrect extractions with their source text and returns recommended "
+        "context updates to improve future extraction accuracy."
+    ),
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "errors": {
+                "type": "array",
+                "description": "List of incorrectly extracted entities.",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "text": {
+                            "type": "string",
+                            "description": "The extracted entity text.",
+                        },
+                        "type": {
+                            "type": "string",
+                            "enum": ["spatial", "temporal"],
+                            "description": "Entity type.",
+                        },
+                        "source_text": {
+                            "type": "string",
+                            "description": "OCR source text the entity was extracted from.",
+                        },
+                    },
+                },
+            },
+            "current_spatial_context": {
+                "type": "string",
+                "description": "Current spatial context setting for the project.",
+            },
+            "current_temporal_context": {
+                "type": "string",
+                "description": "Current temporal context setting for the project.",
+            },
+        },
+        "required": ["errors"],
+    },
+}
+
+TOOL_SPECS = [EXTRACT_TEXT_SPEC, EXTRACT_PDF_SPEC, ANALYZE_ERRORS_SPEC]
 
 
 async def _submit_to_platform(
@@ -376,3 +422,84 @@ async def handle_extract_pdf(arguments: dict) -> list[TextContent]:
             text=json.dumps(summary, indent=2, default=str),
         )
     ]
+
+
+_ANALYZE_PROMPT = """You are an expert at spatiotemporal entity extraction from documents.
+
+A user has marked the following extracted entities as INCORRECT. Analyze the errors and suggest improved spatial and temporal context settings that would help avoid these mistakes in future extractions.
+
+## Current Settings
+Spatial context: {spatial_context}
+Temporal context: {temporal_context}
+
+## Incorrect Entities
+{errors_text}
+
+## Instructions
+1. Analyze WHY each entity was likely extracted incorrectly
+2. Suggest an improved **spatial context** - geographic hints that would help disambiguate locations
+3. Suggest an improved **temporal context** - temporal reference points that would help resolve dates
+4. Provide the suggestions in JSON format:
+
+```json
+{{
+  "analysis": "Brief analysis of error patterns",
+  "suggested_spatial_context": "Your improved spatial context text",
+  "suggested_temporal_context": "Your improved temporal context text",
+  "reasoning": "Why these changes would help"
+}}
+```
+"""
+
+
+async def handle_analyze_errors(arguments: dict) -> list[TextContent]:
+    """Analyze dismissed entities and suggest improved context settings."""
+    from talk2stindex.core.llm import create_client
+
+    errors = arguments.get("errors", [])
+    current_spatial = arguments.get("current_spatial_context", "(not set)")
+    current_temporal = arguments.get("current_temporal_context", "(not set)")
+
+    if not errors:
+        return [TextContent(
+            type="text",
+            text=json.dumps({"error": "No errors provided"}),
+        )]
+
+    # Format errors for the prompt
+    lines = []
+    for i, err in enumerate(errors, 1):
+        lines.append(
+            f"{i}. [{err.get('type', 'unknown').upper()}] "
+            f"Extracted: \"{err.get('text', '')}\"\n"
+            f"   Source text: \"{err.get('source_text', '(not available)')[:300]}\""
+        )
+    errors_text = "\n".join(lines)
+
+    prompt = _ANALYZE_PROMPT.format(
+        spatial_context=current_spatial or "(not set)",
+        temporal_context=current_temporal or "(not set)",
+        errors_text=errors_text,
+    )
+
+    try:
+        client = create_client(provider="anthropic", max_tokens=2048)
+        raw = client.generate(
+            "You are a helpful assistant that analyzes extraction errors.",
+            prompt,
+        )
+
+        # Try to parse JSON from response
+        from talk2stindex.core.json_utils import extract_json_from_text
+        result = extract_json_from_text(raw)
+        result["error_count"] = len(errors)
+        return [TextContent(
+            type="text",
+            text=json.dumps(result, indent=2, default=str),
+        )]
+    except Exception as e:
+        logger.error(f"analyze_errors failed: {e}", exc_info=True)
+        return [TextContent(
+            type="text",
+            text=json.dumps({"error": str(e)}),
+        )]
