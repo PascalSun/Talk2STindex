@@ -211,6 +211,36 @@ async def _handle_health(_request: Request) -> JSONResponse:
     )
 
 
+async def _handle_api_extract_pdf(request: Request) -> JSONResponse:
+    """REST endpoint to trigger extract_pdf (fire-and-forget friendly)."""
+    import asyncio
+
+    from .tools.stindex import handle_extract_pdf
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
+
+    pdf_id = body.get("pdf_id")
+    if not pdf_id:
+        return JSONResponse({"error": "pdf_id is required"}, status_code=400)
+
+    # Run extraction in background so we can return immediately
+    async def _run():
+        try:
+            await handle_extract_pdf(body)
+        except Exception as e:
+            logger.error(f"Background extract_pdf failed: {e}", exc_info=True)
+
+    asyncio.create_task(_run())
+
+    return JSONResponse(
+        {"status": "accepted", "pdf_id": pdf_id},
+        status_code=202,
+    )
+
+
 class _AlreadySentResponse(Response):
     """Sentinel for endpoints that send the ASGI response directly.
 
@@ -330,6 +360,16 @@ def create_asgi_app(
         Route("/privacy/", endpoint=_handle_privacy, methods=["GET"]),
         Route("/terms", endpoint=_handle_terms, methods=["GET"]),
         Route("/terms/", endpoint=_handle_terms, methods=["GET"]),
+        Route(
+            "/api/extract_pdf",
+            endpoint=_handle_api_extract_pdf,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/extract_pdf/",
+            endpoint=_handle_api_extract_pdf,
+            methods=["POST"],
+        ),
         Route(
             "/mcp",
             endpoint=partial(_handle_mcp_endpoint, session_manager=session_manager),

@@ -14,9 +14,9 @@ def test_tool_specs():
     """Test that tool specifications are properly defined."""
     from talk2stindex.mcp.tools.stindex import TOOL_SPECS
 
-    assert len(TOOL_SPECS) == 1
-    spec = TOOL_SPECS[0]
-    assert spec["name"] == "extract_text"
+    assert len(TOOL_SPECS) == 2
+    assert TOOL_SPECS[0]["name"] == "extract_text"
+    assert TOOL_SPECS[1]["name"] == "extract_pdf"
 
 
 def test_extract_text_spec_schema():

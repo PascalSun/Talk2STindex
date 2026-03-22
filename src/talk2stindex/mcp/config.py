@@ -63,6 +63,16 @@ class AwsConfig:
 
 
 @dataclass
+class PlatformApiConfig:
+    """KAIA Platform API configuration for submitting extraction results."""
+
+    url: str | None = None  # e.g. https://admin.kaiaperth.com
+    token: str | None = None  # DRF token for auth
+    verify_ssl: bool = False
+    timeout: float = 30.0
+
+
+@dataclass
 class LlmConfig:
     """Cloud LLM API keys used by stindex for entity extraction."""
 
@@ -90,6 +100,7 @@ class MCPConfig:
     server: ServerConfig = field(default_factory=ServerConfig)
     oauth: OAuthConfig = field(default_factory=OAuthConfig)
     rest_auth: RestAuthConfig = field(default_factory=RestAuthConfig)
+    platform_api: PlatformApiConfig = field(default_factory=PlatformApiConfig)
     dev: DevConfig = field(default_factory=DevConfig)
     aws: AwsConfig = field(default_factory=AwsConfig)
     llm: LlmConfig = field(default_factory=LlmConfig)
@@ -141,6 +152,14 @@ class MCPConfig:
                 cache_ttl_seconds=rest_auth_data.get("cache_ttl_seconds", 30.0),
             )
 
+            platform_api_data = data.get("platform_api", {})
+            platform_api = PlatformApiConfig(
+                url=platform_api_data.get("url"),
+                token=platform_api_data.get("token"),
+                verify_ssl=platform_api_data.get("verify_ssl", False),
+                timeout=float(platform_api_data.get("timeout", 30.0)),
+            )
+
             dev_data = data.get("dev", {})
             dev = DevConfig(
                 console_password=dev_data.get("console_password"),
@@ -169,6 +188,7 @@ class MCPConfig:
                 server=server,
                 oauth=oauth,
                 rest_auth=rest_auth,
+                platform_api=platform_api,
                 dev=dev,
                 aws=aws,
                 llm=llm,
@@ -217,6 +237,14 @@ class MCPConfig:
             cache_ttl_seconds=float(os.getenv("REST_AUTH_CACHE_TTL_SECONDS", "30.0")),
         )
 
+        platform_api = PlatformApiConfig(
+            url=os.getenv("PLATFORM_API_URL"),
+            token=os.getenv("PLATFORM_API_TOKEN"),
+            verify_ssl=os.getenv("PLATFORM_API_VERIFY_SSL", "false").lower()
+            in ("true", "1", "yes"),
+            timeout=float(os.getenv("PLATFORM_API_TIMEOUT", "30.0")),
+        )
+
         dev = DevConfig(
             console_password=os.getenv("TALK2STINDEX_CONSOLE_PASSWORD"),
             console_secret=os.getenv("TALK2STINDEX_CONSOLE_SECRET"),
@@ -240,6 +268,7 @@ class MCPConfig:
             server=server,
             oauth=oauth,
             rest_auth=rest_auth,
+            platform_api=platform_api,
             dev=dev,
             aws=aws,
             llm=llm,
@@ -273,6 +302,10 @@ class MCPConfig:
             "REST_AUTH_VERIFY_SSL": ("rest_auth", "verify_ssl"),
             "REST_AUTH_TIMEOUT": ("rest_auth", "timeout"),
             "REST_AUTH_CACHE_TTL_SECONDS": ("rest_auth", "cache_ttl_seconds"),
+            "PLATFORM_API_URL": ("platform_api", "url"),
+            "PLATFORM_API_TOKEN": ("platform_api", "token"),
+            "PLATFORM_API_VERIFY_SSL": ("platform_api", "verify_ssl"),
+            "PLATFORM_API_TIMEOUT": ("platform_api", "timeout"),
             "TALK2STINDEX_CONSOLE_PASSWORD": ("dev", "console_password"),
             "TALK2STINDEX_CONSOLE_SECRET": ("dev", "console_secret"),
             "AWS_ACCESS_KEY_ID": ("aws", "access_key_id"),
@@ -320,6 +353,11 @@ class MCPConfig:
                 "verify_ssl": self.rest_auth.verify_ssl,
                 "timeout": self.rest_auth.timeout,
                 "cache_ttl_seconds": self.rest_auth.cache_ttl_seconds,
+            },
+            "platform_api": {
+                "url": self.platform_api.url,
+                "verify_ssl": self.platform_api.verify_ssl,
+                "timeout": self.platform_api.timeout,
             },
             "dev": {},
             "aws": {

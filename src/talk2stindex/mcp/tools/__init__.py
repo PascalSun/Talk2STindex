@@ -18,10 +18,16 @@ TOOL_SPECS = stindex.TOOL_SPECS
 
 TOOL_HANDLERS = {
     "extract_text": stindex.handle_extract_text,
+    "extract_pdf": stindex.handle_extract_pdf,
 }
 
 
 def register_tools(server: Server, *, config=None) -> None:
+    # Configure platform API for result submission
+    if config and hasattr(config, "platform_api") and config.platform_api.url:
+        stindex.configure_platform(config.platform_api)
+        logger.info(f"Platform API configured: {config.platform_api.url}")
+
     @server.list_tools()
     async def list_tools() -> list[Tool]:
         return [Tool(**spec) for spec in TOOL_SPECS]
