@@ -222,6 +222,7 @@ async def _handle_api_analyze_errors(request: Request) -> JSONResponse:
 
     results = await handle_analyze_errors(body)
     import json as _json
+
     return JSONResponse(_json.loads(results[0].text))
 
 

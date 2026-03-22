@@ -461,10 +461,12 @@ async def handle_analyze_errors(arguments: dict) -> list[TextContent]:
     current_temporal = arguments.get("current_temporal_context", "(not set)")
 
     if not errors:
-        return [TextContent(
-            type="text",
-            text=json.dumps({"error": "No errors provided"}),
-        )]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps({"error": "No errors provided"}),
+            )
+        ]
 
     # Format errors for the prompt
     lines = []
@@ -491,15 +493,20 @@ async def handle_analyze_errors(arguments: dict) -> list[TextContent]:
 
         # Try to parse JSON from response
         from talk2stindex.core.json_utils import extract_json_from_text
+
         result = extract_json_from_text(raw)
         result["error_count"] = len(errors)
-        return [TextContent(
-            type="text",
-            text=json.dumps(result, indent=2, default=str),
-        )]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(result, indent=2, default=str),
+            )
+        ]
     except Exception as e:
         logger.error(f"analyze_errors failed: {e}", exc_info=True)
-        return [TextContent(
-            type="text",
-            text=json.dumps({"error": str(e)}),
-        )]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps({"error": str(e)}),
+            )
+        ]
