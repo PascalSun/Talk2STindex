@@ -36,6 +36,21 @@ CRITICAL RULES:
      - country: Country name
    - Include parent region for disambiguation (state, country)
 {spatial_context}
+3. CONTEXT for each entity:
+   - For each entity, provide a brief 'context' sentence explaining WHAT HAPPENED \
+at this time or place, as described in the source text
+   - The context should be a meaningful summary, not just repeating the entity name
+   - Example: for "Perth" → "Exploration drilling program commenced in the Perth Basin"
+   - Example: for "March 2023" → "Quarterly report submitted covering field sampling results"
+
+4. CONFIDENCE scoring:
+   - 1.0: Entity is clearly meaningful with a clear event/activity described
+   - 0.7: Entity is relevant but context is somewhat ambiguous
+   - 0.3 or below: Entity is mentioned only in passing (headers, footers, \
+boilerplate, generic references with no specific event)
+   - Do NOT extract entities that are purely structural (page numbers, \
+document dates in footers, copyright years)
+
 REMINDER: Return ONLY valid JSON, nothing else.
 
 Respond only in raw JSON. Schema:
@@ -48,6 +63,7 @@ SCHEMA = {
             "normalized": "ISO 8601 value",
             "normalization_type": "date|datetime|duration|interval|time|year|month",
             "confidence": 1.0,
+            "context": "Brief summary of what happened at this time",
         }
     ],
     "spatial": [
@@ -56,6 +72,7 @@ SCHEMA = {
             "location_type": "city|state|country|location|region|landmark",
             "parent_region": "parent region for disambiguation",
             "confidence": 1.0,
+            "context": "Brief summary of what happened at this location",
         }
     ],
 }
@@ -85,7 +102,10 @@ def build_extraction_prompt(
     # Temporal anchor instruction
     temporal_anchor = ""
     if temporal_reference:
-        temporal_anchor = f"   - For relative dates (e.g., 'Monday', 'last week'), use document date {temporal_reference} as anchor\n"
+        temporal_anchor = (
+            f"   - For relative dates (e.g., 'Monday', 'last week'), "
+            f"use document date {temporal_reference} as anchor\n"
+        )
     else:
         temporal_anchor = "   - For relative dates, use most recent occurrence\n"
 

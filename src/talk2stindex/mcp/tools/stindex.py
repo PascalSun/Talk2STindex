@@ -206,6 +206,15 @@ async def handle_extract_text(arguments: dict) -> list[TextContent]:
         spatial_reference=arguments.get("spatial_reference"),
     )
 
+    # Map 'context' to 'description' for platform storage
+    if result.get("success"):
+        for ent in result.get("entities", {}).get("spatial", []):
+            if ent.get("context") and not ent.get("description"):
+                ent["description"] = ent["context"]
+        for ent in result.get("entities", {}).get("temporal", []):
+            if ent.get("context") and not ent.get("description"):
+                ent["description"] = ent["context"]
+
     pdf_id = arguments.get("pdf_id")
     annotation_id = arguments.get("annotation_id")
 
@@ -351,14 +360,28 @@ async def handle_extract_pdf(arguments: dict) -> list[TextContent]:
             )
             if result.get("success"):
                 entities = result.get("entities", {})
-                spatial = entities.get("spatial", [])
-                temporal = entities.get("temporal", [])
+                raw_spatial = entities.get("spatial", [])
+                raw_temporal = entities.get("temporal", [])
 
-                # Tag each entity with source OCR text as description
-                ocr_preview = ocr_text[:500] if len(ocr_text) > 500 else ocr_text
-                for ent in spatial + temporal:
-                    if not ent.get("description"):
-                        ent["description"] = ocr_preview
+                # Use LLM-generated 'context' as description
+                # Filter out low-confidence entities without context
+                spatial = []
+                for ent in raw_spatial:
+                    ctx = ent.get("context", "")
+                    conf = ent.get("confidence", 1.0)
+                    if conf <= 0.3 and not ctx:
+                        continue
+                    ent["description"] = ctx or ""
+                    spatial.append(ent)
+
+                temporal = []
+                for ent in raw_temporal:
+                    ctx = ent.get("context", "")
+                    conf = ent.get("confidence", 1.0)
+                    if conf <= 0.3 and not ctx:
+                        continue
+                    ent["description"] = ctx or ""
+                    temporal.append(ent)
 
                 if spatial or temporal:
                     await _submit_to_platform(
