@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -81,13 +82,6 @@ def sse(
     # Build server
     app, session_manager, _mcp_server = build_server(mcp_config)
 
-    @asynccontextmanager
-    async def lifespan(_app):
-        async with session_manager.run():
-            yield
-
-    app.router.lifespan_context = lifespan
-
     # Display configuration (concise)
     click.echo(
         f"MCP server: {mcp_config.server.base_url} — StreamableHTTP (MCP 2025-03-26)"
@@ -103,6 +97,34 @@ def sse(
 
     # Run server
     if workers <= 1:
+
+        @asynccontextmanager
+        async def lifespan(_app):
+            from talk2stindex.mcp import server as server_module
+            from talk2stindex.mcp.task_queue import TaskQueue
+            from talk2stindex.mcp.tools.stindex import handle_extract_pdf
+
+            # Initialize persistent task queue
+            data_dir = Path(os.getenv("MCP_DATA_DIR", "./data"))
+            queue_db = data_dir / "queue" / "tasks.db"
+            task_queue = TaskQueue(queue_db, max_concurrent=2)
+            task_queue.recover_stale()
+            server_module._task_queue = task_queue
+
+            async def process_task(payload: dict):
+                await handle_extract_pdf(payload)
+
+            worker_task = asyncio.create_task(task_queue.run_worker(process_task))
+
+            async with session_manager.run():
+                yield
+
+            task_queue.shutdown()
+            await worker_task
+            server_module._task_queue = None
+
+        app.router.lifespan_context = lifespan
+
         uvicorn.run(
             app,
             host=mcp_config.server.host,

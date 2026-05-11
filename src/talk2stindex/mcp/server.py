@@ -226,12 +226,15 @@ async def _handle_api_analyze_errors(request: Request) -> JSONResponse:
     return JSONResponse(_json.loads(results[0].text))
 
 
+# Persistent task queue — set during app startup (see cli.py / asgi.py lifespan).
+_task_queue: "TaskQueue | None" = None  # noqa: F821
+
+
 async def _handle_api_extract_pdf(request: Request) -> JSONResponse:
-    """REST endpoint to trigger extract_pdf (fire-and-forget friendly)."""
-    import asyncio
+    """REST endpoint to trigger extract_pdf (fire-and-forget, returns 202).
 
-    from .tools.stindex import handle_extract_pdf
-
+    Tasks are persisted to a SQLite queue so they survive service restarts.
+    """
     try:
         body = await request.json()
     except Exception:
@@ -241,19 +244,64 @@ async def _handle_api_extract_pdf(request: Request) -> JSONResponse:
     if not pdf_id:
         return JSONResponse({"error": "pdf_id is required"}, status_code=400)
 
-    # Run extraction in background so we can return immediately
-    async def _run():
-        try:
-            await handle_extract_pdf(body)
-        except Exception as e:
-            logger.error(f"Background extract_pdf failed: {e}", exc_info=True)
+    if _task_queue is None:
+        return JSONResponse({"error": "Task queue not initialized"}, status_code=503)
 
-    asyncio.create_task(_run())
-
+    task_id = _task_queue.enqueue(body)
     return JSONResponse(
-        {"status": "accepted", "pdf_id": pdf_id},
+        {"status": "accepted", "pdf_id": pdf_id, "task_id": task_id},
         status_code=202,
     )
+
+
+async def _handle_console_api_queue(request: Request) -> JSONResponse:
+    """Return task queue status."""
+    if _task_queue is None:
+        return JSONResponse({"error": "Task queue not initialized"}, status_code=503)
+
+    try:
+        limit = int(request.query_params.get("limit") or "50")
+    except Exception:
+        limit = 50
+    limit = max(1, min(200, limit))
+
+    conn = _task_queue._conn
+    # Counts by status
+    counts = {}
+    for row in conn.execute(
+        "SELECT status, COUNT(*) FROM tasks GROUP BY status"
+    ).fetchall():
+        counts[row[0]] = row[1]
+
+    # Recent tasks (newest first)
+    import json as _json
+    rows = conn.execute(
+        "SELECT id, payload, status, created_at, started_at, completed_at, error "
+        "FROM tasks ORDER BY created_at DESC LIMIT ?",
+        (limit,),
+    ).fetchall()
+
+    tasks = []
+    for row in rows:
+        payload = {}
+        try:
+            payload = _json.loads(row[1])
+        except Exception:
+            pass
+        tasks.append({
+            "id": row[0],
+            "pdf_id": payload.get("pdf_id"),
+            "status": row[2],
+            "created_at": row[3],
+            "started_at": row[4],
+            "completed_at": row[5],
+            "error": row[6],
+        })
+
+    return JSONResponse({
+        "counts": counts,
+        "tasks": tasks,
+    })
 
 
 class _AlreadySentResponse(Response):
@@ -394,6 +442,16 @@ def create_asgi_app(
             "/api/analyze_errors/",
             endpoint=_handle_api_analyze_errors,
             methods=["POST"],
+        ),
+        Route(
+            "/console/api/queue",
+            endpoint=_handle_console_api_queue,
+            methods=["GET"],
+        ),
+        Route(
+            "/console/api/queue/",
+            endpoint=_handle_console_api_queue,
+            methods=["GET"],
         ),
         Route(
             "/mcp",
