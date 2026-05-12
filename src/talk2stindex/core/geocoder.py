@@ -16,8 +16,11 @@ _geocode_lock = threading.Lock()
 _geocode_cache: Dict[str, Optional[Dict[str, Any]]] = {}
 
 
+_MAX_RETRIES = 3
+
+
 def _rate_limited_geocode(geolocator: Any, query: str) -> Optional[Dict[str, Any]]:
-    """Geocode with process-wide lock, rate limiting, and caching."""
+    """Geocode with process-wide lock, rate limiting, caching, and retry on 429."""
     if query in _geocode_cache:
         return _geocode_cache[query]
 
@@ -26,28 +29,39 @@ def _rate_limited_geocode(geolocator: Any, query: str) -> Optional[Dict[str, Any
         if query in _geocode_cache:
             return _geocode_cache[query]
 
-        now = time.monotonic()
-        elapsed = now - _last_request_time
-        if elapsed < _RATE_LIMIT:
-            time.sleep(_RATE_LIMIT - elapsed)
-        _last_request_time = time.monotonic()
+        for attempt in range(_MAX_RETRIES):
+            now = time.monotonic()
+            elapsed = now - _last_request_time
+            if elapsed < _RATE_LIMIT:
+                time.sleep(_RATE_LIMIT - elapsed)
+            _last_request_time = time.monotonic()
 
-        try:
-            result = geolocator.geocode(query, exactly_one=True)
-            parsed = None
-            if result:
-                logger.debug(f"Geocoded '{query}' → ({result.latitude}, {result.longitude})")
-                parsed = {
-                    "latitude": round(result.latitude, 6),
-                    "longitude": round(result.longitude, 6),
-                    "address": result.address,
-                }
-            _geocode_cache[query] = parsed
-            return parsed
-        except Exception as e:
-            logger.warning(f"Geocoding failed for '{query}': {e}")
-            _geocode_cache[query] = None
-            return None
+            try:
+                result = geolocator.geocode(query, exactly_one=True)
+                parsed = None
+                if result:
+                    logger.debug(f"Geocoded '{query}' → ({result.latitude}, {result.longitude})")
+                    parsed = {
+                        "latitude": round(result.latitude, 6),
+                        "longitude": round(result.longitude, 6),
+                        "address": result.address,
+                    }
+                _geocode_cache[query] = parsed
+                return parsed
+            except Exception as e:
+                err_str = str(e).lower()
+                if "429" in err_str or "too many" in err_str:
+                    wait = _RATE_LIMIT * (attempt + 2)
+                    logger.warning(f"Geocoding rate-limited for '{query}', waiting {wait:.0f}s (attempt {attempt + 1}/{_MAX_RETRIES})")
+                    time.sleep(wait)
+                    continue
+                logger.warning(f"Geocoding failed for '{query}': {e}")
+                _geocode_cache[query] = None
+                return None
+
+        logger.warning(f"Geocoding gave up for '{query}' after {_MAX_RETRIES} retries")
+        _geocode_cache[query] = None
+        return None
 
 
 def geocode(
