@@ -2,24 +2,52 @@
 
 from __future__ import annotations
 
+import threading
 import time
 from typing import Any, Dict, List, Optional
 
 from loguru import logger
 
-# Rate limit between Nominatim requests (seconds)
-_RATE_LIMIT = 1.1
+# Rate limit between Nominatim requests (seconds).
+# Nominatim allows max 1 req/s — use 1.5s to be safe.
+_RATE_LIMIT = 1.5
 _last_request_time = 0.0
+_geocode_lock = threading.Lock()
+_geocode_cache: Dict[str, Optional[Dict[str, Any]]] = {}
 
 
-def _rate_limit() -> None:
-    """Enforce Nominatim rate limit."""
+def _rate_limited_geocode(geolocator: Any, query: str) -> Optional[Dict[str, Any]]:
+    """Geocode with process-wide lock, rate limiting, and caching."""
+    if query in _geocode_cache:
+        return _geocode_cache[query]
+
     global _last_request_time
-    now = time.monotonic()
-    elapsed = now - _last_request_time
-    if elapsed < _RATE_LIMIT:
-        time.sleep(_RATE_LIMIT - elapsed)
-    _last_request_time = time.monotonic()
+    with _geocode_lock:
+        if query in _geocode_cache:
+            return _geocode_cache[query]
+
+        now = time.monotonic()
+        elapsed = now - _last_request_time
+        if elapsed < _RATE_LIMIT:
+            time.sleep(_RATE_LIMIT - elapsed)
+        _last_request_time = time.monotonic()
+
+        try:
+            result = geolocator.geocode(query, exactly_one=True)
+            parsed = None
+            if result:
+                logger.debug(f"Geocoded '{query}' → ({result.latitude}, {result.longitude})")
+                parsed = {
+                    "latitude": round(result.latitude, 6),
+                    "longitude": round(result.longitude, 6),
+                    "address": result.address,
+                }
+            _geocode_cache[query] = parsed
+            return parsed
+        except Exception as e:
+            logger.warning(f"Geocoding failed for '{query}': {e}")
+            _geocode_cache[query] = None
+            return None
 
 
 def geocode(
@@ -29,6 +57,9 @@ def geocode(
 ) -> Optional[Dict[str, Any]]:
     """Geocode a location name to coordinates.
 
+    Process-wide lock ensures only one Nominatim request at a time.
+    Results are cached so repeated locations are instant.
+
     Args:
         location: Location name (e.g. "Kwinana").
         parent_region: Parent region from LLM (e.g. "Western Australia").
@@ -37,52 +68,23 @@ def geocode(
     Returns:
         Dict with latitude, longitude, address or None if failed.
     """
-    from geopy.exc import GeocoderServiceError, GeocoderTimedOut
     from geopy.geocoders import Nominatim
 
-    geolocator = Nominatim(
-        user_agent="talk2stindex/0.1.0",
-        timeout=10,
-    )
+    geolocator = Nominatim(user_agent="talk2stindex/0.1.0", timeout=10)
 
-    # Build query with disambiguation
     query = location
     if parent_region:
         query = f"{location}, {parent_region}"
     elif spatial_reference:
         query = f"{location}, {spatial_reference}"
 
-    try:
-        _rate_limit()
-        result = geolocator.geocode(query, exactly_one=True)
-        if result:
-            logger.debug(
-                f"Geocoded '{location}' → ({result.latitude}, {result.longitude})"
-            )
-            return {
-                "latitude": round(result.latitude, 6),
-                "longitude": round(result.longitude, 6),
-                "address": result.address,
-            }
+    result = _rate_limited_geocode(geolocator, query)
+    if result:
+        return result
 
-        # Fallback: try without parent region
-        if parent_region or spatial_reference:
-            _rate_limit()
-            result = geolocator.geocode(location, exactly_one=True)
-            if result:
-                logger.debug(
-                    f"Geocoded '{location}' (fallback) → ({result.latitude}, {result.longitude})"
-                )
-                return {
-                    "latitude": round(result.latitude, 6),
-                    "longitude": round(result.longitude, 6),
-                    "address": result.address,
-                }
-
-    except (GeocoderTimedOut, GeocoderServiceError) as e:
-        logger.warning(f"Geocoding failed for '{location}': {e}")
-    except Exception as e:
-        logger.warning(f"Geocoding error for '{location}': {e}")
+    # Fallback: try without parent region
+    if parent_region or spatial_reference:
+        return _rate_limited_geocode(geolocator, location)
 
     return None
 
