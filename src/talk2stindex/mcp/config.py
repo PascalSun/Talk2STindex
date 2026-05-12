@@ -81,6 +81,13 @@ class LlmConfig:
     google_api_key: str | None = None
 
 
+@dataclass
+class MapboxConfig:
+    """Mapbox API configuration for geocoding."""
+
+    access_token: str | None = None
+
+
 def _inject_llm_env(llm: LlmConfig) -> None:
     """Push LLM keys from config into os.environ (env vars already set take priority)."""
     mapping = {
@@ -91,6 +98,12 @@ def _inject_llm_env(llm: LlmConfig) -> None:
     for env_var, value in mapping.items():
         if value and not os.environ.get(env_var):
             os.environ[env_var] = value
+
+
+def _inject_mapbox_env(mapbox: MapboxConfig) -> None:
+    """Push Mapbox token from config into os.environ."""
+    if mapbox.access_token and not os.environ.get("MAPBOX_ACCESS_TOKEN"):
+        os.environ["MAPBOX_ACCESS_TOKEN"] = mapbox.access_token
 
 
 @dataclass
@@ -104,6 +117,7 @@ class MCPConfig:
     dev: DevConfig = field(default_factory=DevConfig)
     aws: AwsConfig = field(default_factory=AwsConfig)
     llm: LlmConfig = field(default_factory=LlmConfig)
+    mapbox: MapboxConfig = field(default_factory=MapboxConfig)
 
     @classmethod
     def from_file(cls, config_path: str | Path) -> MCPConfig:
@@ -181,7 +195,13 @@ class MCPConfig:
                 openai_api_key=llm_data.get("openai_api_key"),
                 google_api_key=llm_data.get("google_api_key"),
             )
+            mapbox_data = data.get("mapbox", {})
+            mapbox = MapboxConfig(
+                access_token=mapbox_data.get("access_token"),
+            )
+
             _inject_llm_env(llm)
+            _inject_mapbox_env(mapbox)
 
             logger.info(f"Loaded configuration from {config_path}")
             return cls(
@@ -192,6 +212,7 @@ class MCPConfig:
                 dev=dev,
                 aws=aws,
                 llm=llm,
+                mapbox=mapbox,
             )
 
         except Exception as e:
