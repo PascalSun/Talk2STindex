@@ -1,3 +1,4 @@
+name: talk2stindex-dev
 services:
   talk2stindex-mcp:
     container_name: talk2stindex-mcp-dev

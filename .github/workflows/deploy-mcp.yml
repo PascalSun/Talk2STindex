@@ -104,8 +104,7 @@ jobs:
               docker --version
               docker compose version
 
-              docker compose -f docker-compose.mcp.yml down || true
-              docker compose -f docker-compose.mcp.yml up -d --build
+              sudo systemctl restart talk2stindex.service
 
               sleep 5
               docker compose -f docker-compose.mcp.yml ps
