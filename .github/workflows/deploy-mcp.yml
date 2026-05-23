@@ -88,6 +88,10 @@ jobs:
                 " 2>/dev/null || true
 
               cd "$CODE_DIR"
+
+              # Stop container before replacing code
+              docker compose -f docker-compose.mcp.yml down || true
+
               find . -mindepth 1 -maxdepth 1 -exec rm -rf {} +
               mv /home/kaia/talk2stindex-code.tar.gz "$CODE_DIR/talk2stindex-code.tar.gz"
               tar -xzf talk2stindex-code.tar.gz
@@ -101,12 +105,24 @@ jobs:
                 cp "$ARTIFACTS_DIR/config.yml" "$CODE_DIR/config.yml"
               fi
 
-              docker --version
-              docker compose version
+              # Build image only if it does not exist yet; otherwise just restart
+              IMAGE=$(docker compose -f docker-compose.mcp.yml config --images 2>/dev/null | head -1)
+              if [ -n "$IMAGE" ] && docker image inspect "$IMAGE" >/dev/null 2>&1; then
+                echo "Image $IMAGE exists, skipping build"
+                docker compose -f docker-compose.mcp.yml up -d
+              else
+                echo "Image not found, building..."
+                docker compose -f docker-compose.mcp.yml up -d --build
+              fi
 
-              sudo systemctl restart talk2stindex.service
-
-              sleep 5
+              # Wait for container to become healthy (up to 120s)
+              for i in $(seq 1 24); do
+                if curl -fsS http://127.0.0.1:8016/health >/dev/null 2>&1; then
+                  echo "Health check passed after ~$((i*5))s"
+                  break
+                fi
+                [ "$i" -eq 24 ] && { echo "Health check failed after 120s"; docker compose -f docker-compose.mcp.yml logs --tail=50; exit 1; }
+                sleep 5
+              done
               docker compose -f docker-compose.mcp.yml ps
-              curl -fsS http://127.0.0.1:8016/health | cat
             '
