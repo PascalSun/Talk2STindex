@@ -12,6 +12,7 @@ services:
       - "8016:8016"
     environment:
       - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app/src
     command:
       - talk2stindex-mcp
       - sse
@@ -24,6 +25,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
+      - ./src:/app/src:ro
       - ../artifacts/config.mcp.prod.yml:/app/config.mcp.yml:ro
     logging:
       driver: "json-file"
