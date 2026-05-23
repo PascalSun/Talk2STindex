@@ -254,6 +254,55 @@ async def _handle_api_extract_pdf(request: Request) -> JSONResponse:
     )
 
 
+async def _handle_api_queue_status(request: Request) -> JSONResponse:
+    """Queue status for external monitoring (REST token auth via /api/ path)."""
+    import json as _json
+
+    if _task_queue is None:
+        return JSONResponse({
+            "service": SERVER_NAME,
+            "version": __version__,
+            "counts": {},
+            "tasks": [],
+        })
+
+    conn = _task_queue._conn
+    counts = {}
+    for row in conn.execute(
+        "SELECT status, COUNT(*) FROM tasks GROUP BY status"
+    ).fetchall():
+        counts[row[0]] = row[1]
+
+    rows = conn.execute(
+        "SELECT id, payload, status, created_at, started_at, completed_at, error "
+        "FROM tasks ORDER BY created_at DESC LIMIT 50"
+    ).fetchall()
+
+    tasks = []
+    for row in rows:
+        payload = {}
+        try:
+            payload = _json.loads(row[1])
+        except Exception:
+            pass
+        tasks.append({
+            "id": row[0],
+            "pdf_id": payload.get("pdf_id"),
+            "status": row[2],
+            "created_at": row[3],
+            "started_at": row[4],
+            "completed_at": row[5],
+            "error": row[6],
+        })
+
+    return JSONResponse({
+        "service": SERVER_NAME,
+        "version": __version__,
+        "counts": counts,
+        "tasks": tasks,
+    })
+
+
 async def _handle_console_api_queue(request: Request) -> JSONResponse:
     """Return task queue status."""
     if _task_queue is None:
@@ -443,6 +492,8 @@ def create_asgi_app(
             endpoint=_handle_api_analyze_errors,
             methods=["POST"],
         ),
+        Route("/api/queue_status", endpoint=_handle_api_queue_status, methods=["GET"]),
+        Route("/api/queue_status/", endpoint=_handle_api_queue_status, methods=["GET"]),
         Route(
             "/console/api/queue",
             endpoint=_handle_console_api_queue,
