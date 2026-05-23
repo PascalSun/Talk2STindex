@@ -72,6 +72,7 @@ jobs:
               fi
 
               mkdir -p "$ARTIFACTS_DIR/data" "$ARTIFACTS_DIR/logs"
+              docker run --rm -v "$ARTIFACTS_DIR:/artifacts" alpine chown -R 1000:1000 /artifacts/data /artifacts/logs
 
               docker run --rm \
                 -v "$CODE_DIR:/code" \
