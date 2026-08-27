@@ -115,15 +115,11 @@ jobs:
                 cp "$ARTIFACTS_DIR/config.yml" "$CODE_DIR/config.yml"
               fi
 
-              # Build image only if it does not exist yet; otherwise just restart
-              IMAGE=$(docker compose -f docker-compose.mcp.yml config --images 2>/dev/null | head -1)
-              if [ -n "$IMAGE" ] && docker image inspect "$IMAGE" >/dev/null 2>&1; then
-                echo "Image $IMAGE exists, skipping build"
-                docker compose -f docker-compose.mcp.yml up -d
-              else
-                echo "Image not found, building..."
-                docker compose -f docker-compose.mcp.yml up -d --build
-              fi
+              # Always rebuild. The code is COPYed into the image, so skipping the build when a
+              # stale image happens to exist deploys nothing at all — the job goes green while the
+              # container keeps running months-old code. The layer cache keeps this cheap when
+              # nothing changed.
+              docker compose -f docker-compose.mcp.yml up -d --build
 
               # Wait for container to become healthy (up to 120s)
               for i in $(seq 1 24); do
